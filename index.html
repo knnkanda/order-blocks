@@ -439,6 +439,8 @@
                 <li><b class="p4">A・S</b> ＋と− … 最後に、左から計算</li>
               </ul>
               <p>行がそろうと計算が自動再生されます。結果が上の <b>ターゲット</b> と同じなら行が消えて高得点。ちがうと行は石になって残ります。</p>
+              <p><b>お手本ピース：</b>ターゲットには必ず、その数になる「お手本の式」があります。落ちてくるピースは、その式のピースが多め（3分の2以上）です。置いたタイルに合わせてお手本は組み直されるので、そろえるチャンスは続きます。</p>
+              <p><b>やさしくスタート：</b>最初は落下が一番ゆっくりで、式も小さな数のたし算・ひき算だけ。行を消すごとに少しずつ速くなり、かけ算・わり算・分数が少しずつ混ざってきます。</p>
               <p><b>KCF：</b>÷のうしろが分数のときは <b>FLIPボタン</b> を押そう。Keep（そのまま）・Change（÷→×）・Flip（分数を逆数に）で割り算がかけ算に変わります。</p>
               <p>操作：← → 移動 ／ ↓ 早おとし ／ スペース 一気に落とす（スマホは下のボタン）</p>
               <button class="big-btn" id="startBtn" type="button">▶ スタート</button>
@@ -530,6 +532,8 @@
       FRACS = [rat(1,2), rat(1,3), rat(2,3), rat(3,2), rat(1,4), rat(3,4), rat(4,3), rat(5,2)];
 
       var board, piece, nextPiece, target;
+      var modelTokens = null; // the "model expression" (9 tokens) that makes the target
+      var spawnGenCount = 0, modelCycle = 0; // piece-generation pattern counters
       var score, lines, combo, level;
       var state = "start"; // start | falling | calculating | paused | over
       var dropAcc = 0, lastTime = 0, softDrop = false;
@@ -613,14 +617,18 @@
 
       /* ================= tiles & pieces ================= */
       function randNumTile() {
-        if (Math.random() < 0.32) {
+        var dp = diffParams();
+        if (Math.random() < dp.fracProb) {
           var f = FRACS[Math.floor(Math.random() * FRACS.length)];
           return { kind: "num", val: rat(f.n, f.d), isFrac: true };
         }
-        return { kind: "num", val: rat(1 + Math.floor(Math.random() * 6)), isFrac: false };
+        return { kind: "num", val: rat(1 + Math.floor(Math.random() * dp.maxNum)), isFrac: false };
       }
       function randOpTile() {
-        var weights = ["+", "+", "−", "−", "×", "×", "×", "÷", "÷"];
+        var dp = diffParams();
+        var weights = ["+", "+", "−", "−"];
+        if (dp.allowMul) weights.push("×", "×");
+        for (var di = 0; di < dp.divCount; di++) weights.push("÷");
         return { kind: "op", op: weights[Math.floor(Math.random() * weights.length)] };
       }
       function makePiece() { return [randNumTile(), randOpTile(), randNumTile()]; }
@@ -764,21 +772,145 @@
         }
         return toks[0].val;
       }
-      function makeTarget() {
-        // 5 numbers / 4 ops, but biased to small reachable integers:
-        // small numbers (1-4, occasional 5-6) and + - weighted over × ÷
-        var opPool = ["+", "+", "+", "−", "−", "−", "×", "×", "÷"];
-        for (var attempt = 0; attempt < 120; attempt++) {
+      /* ===== model expression ("お手本の式") system =====
+         Every target is backed by one concrete model expression
+         (num op num op num op num op num) whose PEMDAS value IS the
+         target. Pieces are generated mostly as the model's four
+         3-tile windows A[n1 o1 n2] B[n2 o2 n3] C[n3 o3 n4] D[n4 o4 n5]:
+         right after a (re)plan the windows come out back-to-back, then
+         the pattern settles into model, model, random — so model
+         pieces always stay at or above 2/3 of all pieces. */
+      function tileFromToken(tok) {
+        if (tok.kind === "op") return { kind: "op", op: tok.op };
+        return { kind: "num", val: rat(tok.val.n, tok.val.d), isFrac: tok.val.d !== 1 };
+      }
+      function tokenFromTile(t) {
+        if (t.kind === "op") return { kind: "op", op: t.op };
+        return { kind: "num", val: rat(t.val.n, t.val.d) };
+      }
+      function tileMatchesToken(t, tok) {
+        if (!t || !tok || t.kind !== tok.kind) return false;
+        return t.kind === "op" ? t.op === tok.op : rEq(t.val, tok.val);
+      }
+      /* ===== difficulty ramp =====
+         Starts as easy as possible so the first clears are quick wins,
+         then widens little by little with each cleared line: bigger
+         numbers, then ×, then ÷, then fractions. Nothing new arrives
+         suddenly — each material unlocks over several lines. */
+      function diffParams() {
+        var L = lines || 0;
+        return {
+          maxNum: L < 3 ? 3 : (L < 6 ? 4 : (L < 10 ? 5 : 6)),
+          allowMul: L >= 3,
+          divCount: L < 6 ? 0 : (L < 10 ? 1 : 2),
+          fracProb: L < 8 ? 0 : (L < 12 ? 0.08 : 0.16),
+          maxResult: L < 3 ? 9 : (L < 6 ? 16 : 24),
+          minResult: L < 6 ? 1 : 0
+        };
+      }
+      function genExpression(constraints, wantTarget, attempts, allowFrac) {
+        var dp = diffParams();
+        var opPool = ["+", "+", "−", "−"];
+        if (dp.allowMul) opPool.push("×", "×");
+        for (var di = 0; di < dp.divCount; di++) opPool.push("÷");
+        for (var a = 0; a < attempts; a++) {
           var toks = [];
-          for (var k = 0; k < 5; k++) {
-            var nv = Math.random() < 0.78 ? 1 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 6);
-            toks.push({ kind: "num", val: rat(nv) });
-            if (k < 4) toks.push({ kind: "op", op: opPool[Math.floor(Math.random() * opPool.length)] });
+          for (var i = 0; i < COLS; i++) {
+            var fixed = constraints ? constraints[i] : null;
+            if (fixed) { toks.push(tokenFromTile(fixed)); continue; }
+            if (i % 2 === 0) {
+              var v;
+              if (allowFrac && Math.random() < dp.fracProb) {
+                var f = FRACS[Math.floor(Math.random() * FRACS.length)];
+                v = rat(f.n, f.d);
+              } else {
+                v = rat(1 + Math.floor(Math.random() * dp.maxNum));
+              }
+              toks.push({ kind: "num", val: v });
+            } else {
+              toks.push({ kind: "op", op: opPool[Math.floor(Math.random() * opPool.length)] });
+            }
           }
-          var v = evalSimple(toks);
-          if (v.d === 1 && v.n >= 0 && v.n <= 24) return v;
+          var val = evalSimple(toks);
+          if (wantTarget) { if (rEq(val, wantTarget)) return { tokens: toks, value: val }; }
+          else if (val.d === 1 && val.n >= dp.minResult && val.n <= dp.maxResult) return { tokens: toks, value: val };
         }
-        return rat(3 + Math.floor(Math.random() * 10));
+        return null;
+      }
+      function searchModel(constraints, wantTarget) {
+        return genExpression(constraints, wantTarget, 6000, true) ||
+               genExpression(constraints, wantTarget, 6000, false);
+      }
+      function simpleModelTokens() {
+        return [
+          { kind: "num", val: rat(1) }, { kind: "op", op: "+" },
+          { kind: "num", val: rat(1) }, { kind: "op", op: "+" },
+          { kind: "num", val: rat(1) }, { kind: "op", op: "+" },
+          { kind: "num", val: rat(1) }, { kind: "op", op: "−" },
+          { kind: "num", val: rat(1) }
+        ]; // 1+1+1+1−1 = 3
+      }
+      // The row currently being built: columns stack gap-free, so the
+      // full rows form a suffix at the bottom and the build row is the
+      // first not-full row above them. Its filled cells constrain the model.
+      function buildRowInfo() {
+        var minH = COLS;
+        for (var c = 0; c < COLS; c++) { var h = columnHeight(c); if (h < minH) minH = h; }
+        var r = ROWS - 1 - minH;
+        var cons = [];
+        for (var i = 0; i < COLS; i++) cons.push(null);
+        if (r >= 0) for (var c2 = 0; c2 < COLS; c2++) if (board[r][c2]) cons[c2] = board[r][c2];
+        return { row: r, constraints: cons };
+      }
+      function planNewTarget(replaceNext) {
+        var info = buildRowInfo();
+        var hasCons = info.constraints.some(function (t) { return !!t; });
+        var found = hasCons ? searchModel(info.constraints, null)
+                            : (genExpression(null, null, 2000, true) || genExpression(null, null, 4000, false));
+        if (found) { target = found.value; modelTokens = found.tokens; }
+        else { target = rat(3); modelTokens = simpleModelTokens(); }
+        spawnGenCount = 0; modelCycle = 0;
+        if (replaceNext) nextPiece = generatePiece();
+      }
+      // After a piece locks, if the tiles already sitting in the build
+      // row no longer fit the model, replan: first try another model
+      // for the SAME target; only if none exists, move the target to a
+      // value the current row can actually reach.
+      function checkReplan() {
+        if (!modelTokens) return;
+        var cons = buildRowInfo().constraints;
+        var any = false, mismatch = false;
+        for (var i = 0; i < COLS; i++) {
+          if (cons[i]) { any = true; if (!tileMatchesToken(cons[i], modelTokens[i])) mismatch = true; }
+        }
+        if (!any || !mismatch) return;
+        var found = searchModel(cons, target);
+        if (found) {
+          modelTokens = found.tokens;
+          spawnGenCount = 0; modelCycle = 0;
+          nextPiece = generatePiece();
+          setLog("置いたタイルに合わせて、同じターゲットのお手本を組み直しました。次のピースから新しいお手本です。");
+          return;
+        }
+        var alt = searchModel(cons, null);
+        if (alt) {
+          target = alt.value;
+          modelTokens = alt.tokens;
+          spawnGenCount = 0; modelCycle = 0;
+          nextPiece = generatePiece();
+          setLog("今の行では前のターゲットが作れないので、作れる数 <b>" + ratText(target) + "</b> にターゲットを変えました。次のピースから新しいお手本です。");
+        }
+      }
+      function generatePiece() {
+        var useModel;
+        if (!modelTokens) useModel = false;
+        else if (spawnGenCount < 4) useModel = true; // burst: windows A B C D back-to-back
+        else useModel = ((spawnGenCount - 4) % 3) !== 2; // then model, model, random, ...
+        spawnGenCount++;
+        if (!useModel) return makePiece();
+        var w = modelCycle % 4; modelCycle++;
+        var s = w * 2; // A=0-2, B=2-4, C=4-6, D=6-8
+        return [tileFromToken(modelTokens[s]), tileFromToken(modelTokens[s + 1]), tileFromToken(modelTokens[s + 2])];
       }
 
       /* ================= game flow ================= */
@@ -791,8 +923,8 @@
         hideKcfZone();
         newBoard();
         score = 0; lines = 0; combo = 0; level = 1;
-        target = makeTarget();
-        nextPiece = makePiece();
+        planNewTarget(false);
+        nextPiece = generatePiece();
         piece = null; evalRowIdx = -1;
         setPhase("待機中", "");
         setCalcMsg("行を9マスそろえると、ここで計算が再生されます", "");
@@ -815,7 +947,7 @@
       }
       function spawnPiece() {
         piece = { tiles: nextPiece, x: 4, y: 0 }; // left edge only on odd columns (0,2,4,6 zero-based)
-        nextPiece = makePiece();
+        nextPiece = generatePiece();
         // spawn collision: any settled tile in top row within span
         for (var i = 0; i < 3; i++) {
           if (board[0][piece.x + i]) { gameOver(); return; }
@@ -894,6 +1026,8 @@
           for (var c2 = 0; c2 < COLS; c2++) {
             if (board[0][c2]) { gameOver(); return; }
           }
+          checkReplan(); // placed tiles may no longer fit the model expression
+          render();
           state = "falling";
           spawnPiece();
         })();
@@ -1010,6 +1144,7 @@
           await waitContinue();
           exitFocusMode();
           stoneRow(r);
+          planNewTarget(true); // stoned: next target + model are planned anew
           evalRowIdx = -1;
           render();
           return;
@@ -1105,7 +1240,7 @@
           await sleep(450);
           evalRowIdx = -1;
           clearRowBoard(r);
-          target = makeTarget();
+          planNewTarget(true); // new target + model, fitted to the row now being built
           render();
         } else {
           combo = 0;
@@ -1117,6 +1252,7 @@
           await waitContinue(); // result screen holds until つづける
           exitFocusMode();
           stoneRow(r);
+          planNewTarget(true); // stoned: next target + model are planned anew
           evalRowIdx = -1;
           render();
         }
@@ -1124,7 +1260,9 @@
 
       /* ================= main loop ================= */
       function dropInterval() {
-        var base = Math.max(300, 900 - (level - 1) * 90);
+        // Slowest at the very start; each cleared line makes it a little
+        // faster, with a floor so it never becomes frantic.
+        var base = Math.max(320, 1350 - lines * 55);
         return softDrop ? Math.min(60, base) : base;
       }
       function loop(ts) {
