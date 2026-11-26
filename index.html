@@ -1,0 +1,1222 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="data:," />
+    <title>オーダーブロック</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;700;800&display=swap" rel="stylesheet" />
+    <style>
+      button, [role="button"], select, summary, input:not([type="checkbox"], [type="radio"]) { min-height: 2rem; }
+      * { box-sizing: border-box; }
+      :root{
+        --bg:#eef2f5; --panel:#ffffff; --ink:#1c2733; --ink-soft:#52616e;
+        --line:#d5dde3; --board-bg:#22303d; --board-cell:#2e4152;
+        --num:#2f7fd0; --num-ink:#ffffff; --frac:#0d9488; --op:#e8930c; --op-ink:#ffffff;
+        --stone:#8b98a3; --stone-ink:#e8edf0;
+        --accent:#d9480f; --accent-ink:#ffffff; --good:#1e9e62; --bad:#d64545;
+        --hl:#ffd43b; --shadow:0 2px 8px rgba(20,35,50,.12);
+        --calc-bg:#fff8e6;
+      }
+      @media (prefers-color-scheme: dark){
+        :root{
+          --bg:#131a21; --panel:#1d2833; --ink:#eef3f6; --ink-soft:#a7b6c1;
+          --line:#35434f; --board-bg:#0d141b; --board-cell:#1b2835;
+          --num:#3b8bd8; --frac:#14a08f; --op:#e8930c;
+          --stone:#5b6a75; --stone-ink:#cfd8de;
+          --calc-bg:#2a2416; --shadow:0 2px 8px rgba(0,0,0,.4);
+        }
+      }
+      html,body{ margin:0; padding:0; }
+      body{
+        background:var(--bg); color:var(--ink);
+        font-family:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Hiragino Sans",system-ui,sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .wrap{ max-width:1060px; margin:0 auto; padding:10px 12px 28px; }
+
+      /* ===== top status bar ===== */
+      .status{
+        display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; margin-bottom:10px;
+      }
+      .stat{
+        background:var(--panel); border:1px solid var(--line); border-radius:12px;
+        padding:8px 14px; box-shadow:var(--shadow); min-width:104px;
+      }
+      .stat .label{ font-size:11px; font-weight:700; color:var(--ink-soft); letter-spacing:.06em; }
+      .stat .value{ font-size:26px; font-weight:800; line-height:1.15; font-variant-numeric:tabular-nums; }
+      .stat.target{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); flex:1 1 150px; text-align:center; }
+      .stat.target .label{ color:#ffd9c7; }
+      .stat.target .value{ font-size:34px; }
+      .stat .sub{ font-size:12px; font-weight:700; color:var(--ink-soft); }
+      .stat.target .sub{ color:#ffd9c7; }
+
+      /* ===== calc stage ===== */
+      .calc{
+        background:var(--calc-bg); border:2px solid var(--op); border-radius:14px;
+        padding:10px 12px; margin-bottom:12px; min-height:104px; box-shadow:var(--shadow);
+      }
+      .calc-head{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+      .calc-title{ font-weight:800; font-size:14px; }
+      .phase-badge{
+        font-size:12px; font-weight:800; color:#fff; background:var(--ink-soft);
+        border-radius:999px; padding:3px 10px;
+      }
+      .phase-badge.md{ background:var(--bad); }
+      .phase-badge.as{ background:#7048c9; }
+      .calc-msg{ font-size:14px; font-weight:700; }
+      .calc-msg.good{ color:var(--good); }
+      .calc-msg.bad{ color:var(--bad); }
+      .tokens{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:52px; }
+      .token{
+        min-width:46px; height:52px; padding:2px 8px; border-radius:10px;
+        display:flex; align-items:center; justify-content:center;
+        font-size:24px; font-weight:800; background:var(--panel); border:2px solid var(--line); color:var(--ink);
+        transition:transform .15s, background .15s, border-color .15s;
+      }
+      .token.op{ background:var(--op); border-color:var(--op); color:var(--op-ink); }
+      .token.frac-tok{ background:var(--frac); border-color:var(--frac); color:#fff; }
+      .token.hl{ background:var(--hl); border-color:#e0a800; color:#3d2e00; transform:scale(1.12); }
+      .token.result-pop{ animation:pop .35s ease; }
+      @keyframes pop{ 0%{transform:scale(.4);} 60%{transform:scale(1.25);} 100%{transform:scale(1);} }
+      .token.flip-anim{ animation:flipx .6s ease; }
+      @keyframes flipx{ 0%{transform:rotateX(0);} 50%{transform:rotateX(90deg);} 100%{transform:rotateX(0);} }
+      .frac{ display:inline-flex; flex-direction:column; align-items:center; line-height:1.02; font-size:.78em; }
+      .frac .top{ border-bottom:2.5px solid currentColor; padding:0 5px 1px; }
+      .frac .bot{ padding-top:1px; }
+
+      /* KCF zone */
+      .kcf-zone{ display:none; margin-top:10px; border-top:2px dashed var(--op); padding-top:10px; }
+      .kcf-zone.show{ display:block; }
+      .kcf-words{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+      .kcf-word{
+        background:var(--panel); border:2px solid var(--line); border-radius:10px; padding:6px 10px;
+        font-size:13px; font-weight:700;
+      }
+      .kcf-word b{ font-size:17px; }
+      .kcf-word .k{ color:var(--num); } .kcf-word .c{ color:var(--bad); } .kcf-word .f{ color:var(--frac); }
+      .flip-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+      #flipBtn{
+        font-family:inherit; font-size:24px; font-weight:800; letter-spacing:.08em;
+        background:var(--bad); color:#fff; border:none; border-radius:14px;
+        padding:14px 34px; cursor:pointer; min-height:56px; min-width:170px;
+        animation:pulse .55s ease-in-out infinite alternate; box-shadow:0 4px 0 #9c2b2b;
+      }
+      #flipBtn:active{ transform:translateY(3px); box-shadow:0 1px 0 #9c2b2b; }
+      @keyframes pulse{ from{ transform:scale(1);} to{ transform:scale(1.06);} }
+      @media (prefers-reduced-motion: reduce){
+        #flipBtn{ animation:none; } .token.result-pop,.token.flip-anim{ animation:none; }
+      }
+      .flip-timer{ flex:1 1 120px; height:12px; background:var(--line); border-radius:999px; overflow:hidden; }
+      .flip-timer > div{ height:100%; width:100%; background:var(--bad); }
+      .flip-note{ font-size:12px; font-weight:700; color:var(--ink-soft); }
+
+      /* ===== main layout ===== */
+      .main{ display:flex; gap:14px; align-items:flex-start; }
+      .board-col{ flex:0 0 auto; margin:0 auto; }
+      .board-frame{
+        position:relative; background:var(--board-bg); border-radius:16px; padding:8px;
+        box-shadow:var(--shadow); width:min(96vw, 500px);
+      }
+      .board{
+        display:grid; grid-template-columns:repeat(9,1fr); gap:4px;
+      }
+      .cell{
+        aspect-ratio:1/1; border-radius:7px; background:var(--board-cell);
+        display:flex; align-items:center; justify-content:center;
+        font-weight:800; color:#fff; overflow:hidden;
+        font-size:clamp(14px, 4.4vw, 23px);
+      }
+      .cell.col-num{ box-shadow:inset 0 0 0 1px rgba(255,255,255,.04); }
+      .cell.col-op{ background:#273a4c; }
+      .cell.num{ background:var(--num); color:var(--num-ink); }
+      .cell.frac-t{ background:var(--frac); color:#fff; }
+      .cell.op{ background:var(--op); color:var(--op-ink); }
+      .cell.falling{ outline:2px solid rgba(255,255,255,.55); outline-offset:-2px; }
+      .cell.stone{ background:var(--stone); color:var(--stone-ink); }
+      .cell.eval{ outline:3px solid var(--hl); outline-offset:-3px; }
+      .cell.clearing{ animation:pop .3s ease; }
+
+      /* overlays */
+      .overlay{
+        position:absolute; inset:0; border-radius:16px; z-index:5;
+        background:rgba(16,26,36,.88); color:#f2f6f8;
+        display:none; flex-direction:column; align-items:center; justify-content:flex-start;
+        padding:20px 18px; overflow-y:auto; text-align:center;
+      }
+      .overlay.show{ display:flex; }
+      .overlay h1{ font-size:27px; margin:2px 0 4px; font-weight:800; }
+      .overlay h2{ font-size:20px; margin:2px 0 6px; font-weight:800; }
+      .overlay p{ font-size:13.5px; line-height:1.65; margin:5px 0; text-align:left; max-width:300px; }
+      .overlay p.center{ text-align:center; }
+      .overlay .big-btn{
+        font-family:inherit; margin-top:14px; font-size:19px; font-weight:800;
+        background:var(--accent); color:#fff; border:none; border-radius:12px;
+        padding:13px 34px; cursor:pointer; min-height:52px; box-shadow:0 4px 0 #93350a;
+      }
+      .overlay .big-btn:active{ transform:translateY(3px); box-shadow:0 1px 0 #93350a; }
+      .pemdas-list{ text-align:left; font-size:13.5px; line-height:1.9; margin:6px 0; padding-left:0; list-style:none; }
+      .pemdas-list b.p1{ color:#7cc4ff; } .pemdas-list b.p2{ color:#7fe3c3; }
+      .pemdas-list b.p3{ color:#ffb3ab; } .pemdas-list b.p4{ color:#d3b8ff; }
+      .overlay .final-score{ font-size:40px; font-weight:800; color:var(--hl); }
+
+      /* side panel */
+      .side{ flex:1 1 220px; min-width:200px; display:flex; flex-direction:column; gap:12px; }
+      .card{
+        background:var(--panel); border:1px solid var(--line); border-radius:12px;
+        padding:12px 14px; box-shadow:var(--shadow);
+      }
+      .card h3{ margin:0 0 8px; font-size:13px; letter-spacing:.05em; color:var(--ink-soft); }
+      .next-row{ display:flex; gap:5px; }
+      .next-tile{
+        width:46px; height:46px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+        font-size:21px; font-weight:800; color:#fff; background:var(--num);
+      }
+      .next-tile.op{ background:var(--op); } .next-tile.frac-t{ background:var(--frac); }
+      .ladder{ list-style:none; margin:0; padding:0; font-size:14px; font-weight:700; line-height:1.5; }
+      .ladder li{ padding:7px 9px; border-radius:9px; margin-bottom:6px; background:var(--bg); border:2px solid transparent; }
+      .ladder li.active{ border-color:var(--hl); background:var(--calc-bg); }
+      .ladder .rank{ display:inline-block; min-width:22px; font-weight:800; }
+      .ladder .dim{ opacity:.45; font-weight:500; font-size:12.5px; }
+      .hint-pattern{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; font-size:12px; font-weight:700; color:var(--ink-soft); }
+      .hint-pattern .pt{
+        width:30px; height:30px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+        color:#fff; font-size:14px; background:var(--num);
+      }
+      .hint-pattern .pt.op{ background:var(--op); }
+      .log{ font-size:13.5px; font-weight:700; line-height:1.6; min-height:44px; }
+      .log .good{ color:var(--good); } .log .bad{ color:var(--bad); }
+      .btn-row{ display:flex; gap:8px; flex-wrap:wrap; }
+      .sub-btn{
+        font-family:inherit; font-weight:800; font-size:14px; cursor:pointer;
+        background:var(--panel); color:var(--ink); border:2px solid var(--line);
+        border-radius:10px; padding:9px 16px; min-height:44px;
+      }
+      .sub-btn:active{ transform:translateY(1px); }
+
+      /* touch controls */
+      .controls{
+        display:none; gap:10px; justify-content:center; margin-top:14px;
+      }
+      .controls button{
+        font-family:inherit; flex:1 1 0; max-width:110px; height:60px; border-radius:14px;
+        font-size:24px; font-weight:800; cursor:pointer; touch-action:manipulation;
+        background:var(--panel); color:var(--ink); border:2px solid var(--line); box-shadow:var(--shadow);
+      }
+      .controls button:active{ background:var(--calc-bg); transform:translateY(2px); }
+      .controls button.drop{ background:var(--accent); border-color:var(--accent); color:#fff; font-size:16px; }
+      .keys-hint{ text-align:center; font-size:12px; color:var(--ink-soft); margin-top:10px; font-weight:700; }
+
+      /* ===== target bar (sticky, always visible) ===== */
+      .target-bar{
+        position:sticky; top:8px; z-index:30;
+        display:flex; align-items:baseline; justify-content:center; gap:10px; flex-wrap:wrap;
+        background:var(--accent); color:var(--accent-ink);
+        border-radius:14px; padding:10px 16px; margin-bottom:12px; box-shadow:var(--shadow);
+      }
+      .target-bar .tb-label{ font-size:15px; font-weight:800; letter-spacing:.08em; }
+      .target-bar .tb-num{ font-size:38px; font-weight:800; line-height:1; font-variant-numeric:tabular-nums; }
+      .target-bar .tb-note{ font-size:15px; font-weight:800; }
+
+      /* ===== result banner ===== */
+      .result-banner{
+        margin-top:10px; border-radius:12px; padding:12px 14px;
+        font-size:clamp(19px, 5.2vw, 26px); font-weight:800; text-align:center; color:#fff; line-height:1.35;
+      }
+      .result-banner.good{ background:var(--good); }
+      .result-banner.bad{ background:var(--bad); }
+      .result-banner[hidden]{ display:none; }
+
+      /* ===== row progress rail ===== */
+      .board-flex{ display:flex; gap:6px; }
+      .board-flex .board{ flex:1 1 auto; }
+      .rail{ flex:0 0 42px; display:grid; grid-template-rows:repeat(14,1fr); gap:4px; }
+      .rail-cell{
+        display:flex; align-items:center; justify-content:center;
+        font-size:11px; font-weight:800; color:#9fb4c4; border-radius:6px;
+        background:rgba(255,255,255,.06); white-space:nowrap;
+      }
+      .rail-cell.r-one{ background:var(--hl); color:#3d2e00; font-size:12.5px; animation:pulse .55s ease-in-out infinite alternate; }
+      .rail-cell.r-full{ background:var(--good); color:#fff; font-size:14px; }
+      .rail-cell.r-stone{ background:var(--stone); color:var(--stone-ink); }
+      .rail-cell.r-empty{ background:transparent; }
+      .cell.near{ outline:2px solid var(--hl); outline-offset:-2px; }
+      @media (prefers-reduced-motion: reduce){
+        .rail-cell.r-one{ animation:none; }
+      }
+
+      /* ===== start overlay clear rule ===== */
+      .overlay .clear-rule{
+        background:rgba(255,212,59,.16); border:2px solid var(--hl); border-radius:10px;
+        padding:9px 12px; font-size:14.5px; line-height:1.6; text-align:center; max-width:320px;
+      }
+
+      /* ===== focus mode: calc stage becomes a full-screen overlay ===== */
+      .calc.focus-mode{
+        position:fixed; inset:0; z-index:200; margin:0; border:none; border-radius:0;
+        background:rgba(13,20,29,.97); color:#f2f6f8;
+        padding:calc(14px + env(safe-area-inset-top)) 14px calc(22px + env(safe-area-inset-bottom));
+        overflow-y:auto; display:flex; flex-direction:column; align-items:center;
+        box-shadow:none;
+      }
+      .calc.focus-mode .calc-head{ justify-content:center; text-align:center; max-width:640px; }
+      .calc.focus-mode .calc-title{ color:#fff; font-size:17px; }
+      .calc.focus-mode .calc-msg{ color:#eaf2f7; font-size:17px; line-height:1.55; text-align:center; width:100%; }
+      .calc.focus-mode .calc-msg.good{ color:#5eeaa0; }
+      .calc.focus-mode .calc-msg.bad{ color:#ff9c9c; }
+      .calc.focus-mode .kcf-word{ background:#22303d; border-color:#3a4c5e; color:#eaf2f7; }
+      .calc.focus-mode .flip-note{ color:#b9cbd8; }
+      .calc.focus-mode .tokens{
+        flex-wrap:nowrap; width:100%; max-width:640px; gap:4px; min-height:68px; margin-top:6px;
+      }
+      .calc.focus-mode .token{
+        flex:1 1 0; min-width:0; height:66px; padding:2px 1px;
+        font-size:clamp(17px, 5.6vw, 30px); border-radius:9px;
+      }
+      .calc.focus-mode .token.hl{ transform:scale(1.18); z-index:2; box-shadow:0 0 0 3px #fff3bf, 0 6px 18px rgba(0,0,0,.5); }
+      .calc.focus-mode .result-banner{
+        width:100%; max-width:640px; font-size:clamp(23px, 6.4vw, 32px); padding:18px 14px; line-height:1.45;
+      }
+      .calc.focus-mode .kcf-zone{ width:100%; max-width:640px; }
+      .calc.focus-mode .flip-row{ justify-content:center; }
+      .focus-stop-note{
+        display:none; font-size:12.5px; font-weight:800; color:#ffd9c7;
+        background:rgba(217,72,15,.28); border:1px solid rgba(255,160,110,.55);
+        border-radius:999px; padding:4px 12px; margin-bottom:10px;
+      }
+      .calc.focus-mode .focus-stop-note{ display:block; }
+      .focus-actions{ display:none; width:100%; max-width:640px; margin-top:16px; flex-direction:column; gap:10px; align-items:center; }
+      .calc.focus-mode .focus-actions{ display:flex; }
+      #stepNextBtn{
+        font-family:inherit; font-size:16px; font-weight:800; cursor:pointer;
+        background:#22303d; color:#eaf2f7; border:2px solid #4a6175; border-radius:12px;
+        padding:11px 26px; min-height:50px; width:100%;
+      }
+      #stepNextBtn:active{ transform:translateY(2px); }
+      #continueBtn{
+        font-family:inherit; font-size:22px; font-weight:800; cursor:pointer;
+        background:var(--accent); color:#fff; border:none; border-radius:14px;
+        padding:15px 30px; min-height:60px; width:100%;
+        box-shadow:0 4px 0 #93350a;
+      }
+      #continueBtn:active{ transform:translateY(3px); box-shadow:0 1px 0 #93350a; }
+      #continueBtn[hidden], #stepNextBtn[hidden]{ display:none; }
+      .focus-tap-hint{ font-size:12px; font-weight:700; color:#9fb4c4; text-align:center; }
+
+      /* ===== KCF big tiles (which tiles flip is unmistakable) ===== */
+      .kcf-big{ display:flex; gap:8px; justify-content:center; align-items:flex-start; margin:14px 0 6px; width:100%; }
+      .kcf-tile-wrap{ flex:1 1 0; max-width:150px; display:flex; flex-direction:column; align-items:center; gap:7px; }
+      .kcf-label{
+        font-size:12.5px; font-weight:800; line-height:1.35; text-align:center; color:#fff;
+        border-radius:999px; padding:4px 9px; width:100%;
+      }
+      .kcf-label.keep{ background:var(--num); }
+      .kcf-label.change{ background:#b96a00; }
+      .kcf-label.flip{ background:var(--frac); }
+      .kcf-label small{ display:block; font-size:11px; font-weight:700; opacity:.9; }
+      .kcf-big-tile{
+        width:100%; max-width:118px; height:104px; border-radius:14px;
+        display:flex; align-items:center; justify-content:center;
+        font-size:42px; font-weight:800; color:#fff; background:var(--num);
+        border:3px solid rgba(255,255,255,.35); perspective:600px;
+      }
+      .kcf-big-tile.op-tile{ background:var(--op); }
+      .kcf-big-tile.frac-tile{ background:var(--frac); }
+      .kcf-big-tile.flipping{ animation:flipbig .65s ease; }
+      @keyframes flipbig{ 0%{transform:rotateX(0);} 50%{transform:rotateX(90deg) scale(1.08);} 100%{transform:rotateX(0);} }
+      .kcf-before-after{
+        margin-top:10px; font-size:clamp(19px, 5.6vw, 27px); font-weight:800; text-align:center;
+        color:#fff; line-height:1.5; word-break:keep-all;
+      }
+      .kcf-before-after .ba-before{ color:#ffd9c7; }
+      .kcf-before-after .ba-arrow{ color:var(--hl); margin:0 6px; }
+      .kcf-before-after .ba-after{ color:#5eeaa0; }
+      .calc.focus-mode .flip-timer{ display:none; }
+      @media (prefers-reduced-motion: reduce){
+        .kcf-big-tile.flipping{ animation:none; }
+      }
+
+      @media (max-width:760px){
+        .main{ flex-direction:column; }
+        .side{ width:100%; flex-direction:row; flex-wrap:wrap; }
+        .side .card{ flex:1 1 150px; }
+        .controls{ display:flex; }
+        .keys-hint{ display:none; }
+        .stat .value{ font-size:21px; } .stat.target .value{ font-size:28px; }
+        .stat{ min-width:86px; padding:7px 10px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+
+      <!-- status -->
+      <div class="status">
+        <div class="stat">
+          <div class="label">スコア</div>
+          <div class="value" id="scoreVal">0</div>
+          <div class="sub" id="comboVal">コンボ ×1</div>
+        </div>
+        <div class="stat">
+          <div class="label">消した行 / レベル</div>
+          <div class="value"><span id="linesVal">0</span> <span style="font-size:15px;color:var(--ink-soft)">行</span></div>
+          <div class="sub">レベル <span id="levelVal">1</span></div>
+        </div>
+      </div>
+
+      <!-- calc stage: becomes a full-screen focus overlay while a row is calculated -->
+      <section class="calc" id="calcStage" aria-live="polite">
+        <div class="focus-stop-note">⏸ ゲームは停止中 ― 計算だけに集中できます</div>
+        <div class="calc-head">
+          <span class="calc-title">🧮 計算ステージ</span>
+          <span class="phase-badge" id="phaseBadge">待機中</span>
+          <span class="calc-msg" id="calcMsg">行を9マスそろえると、ここで計算が再生されます</span>
+        </div>
+        <div class="tokens" id="tokens"></div>
+        <div class="result-banner" id="resultBanner" hidden></div>
+        <div class="kcf-zone" id="kcfZone">
+          <div class="kcf-words">
+            <span class="kcf-word"><b class="k">K</b>eep … 最初の数は <b>そのまま</b></span>
+            <span class="kcf-word"><b class="c">C</b>hange … ÷ を <b>× に変える</b></span>
+            <span class="kcf-word"><b class="f">F</b>lip … うしろの分数を <b>ひっくり返す</b></span>
+          </div>
+          <div class="kcf-big" id="kcfBig" aria-label="フリップする対象">
+            <div class="kcf-tile-wrap">
+              <div class="kcf-label keep">Keep<small>そのまま</small></div>
+              <div class="kcf-big-tile" id="kcfLeftTile">?</div>
+            </div>
+            <div class="kcf-tile-wrap">
+              <div class="kcf-label change">Change<small>÷ → × に変える</small></div>
+              <div class="kcf-big-tile op-tile" id="kcfOpTile">÷</div>
+            </div>
+            <div class="kcf-tile-wrap">
+              <div class="kcf-label flip">Flip<small>ひっくり返す</small></div>
+              <div class="kcf-big-tile frac-tile" id="kcfRightTile">?</div>
+            </div>
+          </div>
+          <div class="kcf-before-after" id="kcfBeforeAfter"></div>
+          <div class="flip-row">
+            <button id="flipBtn" type="button">FLIP!</button>
+            <div class="flip-timer"><div id="flipTimerBar"></div></div>
+            <span class="flip-note">FLIPを押すと +50点ボーナス！<br />押すまで計算は止まって待っています（自動では進みません）</span>
+          </div>
+        </div>
+        <div class="focus-actions">
+          <button id="stepNextBtn" type="button" hidden>つぎへ ▸</button>
+          <span class="focus-tap-hint" id="stepHint">ステップはゆっくり自動で進みます。急ぐときは「つぎへ」か式をタップ</span>
+          <button id="continueBtn" type="button" hidden>つづける</button>
+        </div>
+      </section>
+
+      <!-- target bar: always visible just above the board -->
+      <div class="target-bar" role="status">
+        <span class="tb-label">ターゲット</span>
+        <span class="tb-num" id="targetVal">?</span>
+        <span class="tb-note">― この数になる行が消える</span>
+      </div>
+
+      <div class="main">
+        <!-- board -->
+        <div class="board-col">
+          <div class="board-frame">
+            <div class="board-flex">
+              <div class="board" id="board"></div>
+              <div class="rail" id="rail" aria-hidden="true"></div>
+            </div>
+
+            <!-- start overlay -->
+            <div class="overlay show" id="startOverlay">
+              <h1>オーダーブロック</h1>
+              <p class="center" style="text-align:center">落ちてくる <b>[数字][記号][数字]</b> を積んで、<br />1行（9マス）を式にそろえるパズルです。</p>
+              <p class="clear-rule"><b>行が9マス全部埋まり、計算結果がターゲットと一致したら、その行が消える</b></p>
+              <p>盤面は横9マスで、列の役割が固定です。1・3・5・7・9列目は数字専用、2・4・6・8列目は記号専用。ピースは2マスずつ横に動くので、どの行も必ず <b>数字・記号・数字・記号・数字・記号・数字・記号・数字</b> という正しい式になります。着地したタイルは列ごとに一番下まで沈むので、埋められない穴はできません。</p>
+              <ul class="pemdas-list">
+                <li><b class="p1">P</b> かっこ ／ <b class="p2">E</b> 指数 … 今回はなし</li>
+                <li><b class="p3">M・D</b> ×と÷ … <b>＋−より先</b>に、左から計算</li>
+                <li><b class="p4">A・S</b> ＋と− … 最後に、左から計算</li>
+              </ul>
+              <p>行がそろうと計算が自動再生されます。結果が上の <b>ターゲット</b> と同じなら行が消えて高得点。ちがうと行は石になって残ります。</p>
+              <p><b>KCF：</b>÷のうしろが分数のときは <b>FLIPボタン</b> を押そう。Keep（そのまま）・Change（÷→×）・Flip（分数を逆数に）で割り算がかけ算に変わります。</p>
+              <p>操作：← → 移動 ／ ↓ 早おとし ／ スペース 一気に落とす（スマホは下のボタン）</p>
+              <button class="big-btn" id="startBtn" type="button">▶ スタート</button>
+            </div>
+
+            <!-- game over overlay -->
+            <div class="overlay" id="overOverlay">
+              <h2>ゲームオーバー</h2>
+              <p class="center" style="text-align:center">タワーが一番上まで届きました</p>
+              <div class="final-score" id="finalScore">0</div>
+              <p class="center" style="text-align:center" id="finalLines">0 行クリア</p>
+              <p>ポイント：×÷は＋−より先。同格どうしは必ず左から。÷分数はKCFで×に変えてから計算します。</p>
+              <button class="big-btn" id="retryBtn" type="button">↻ もう一度あそぶ</button>
+            </div>
+          </div>
+
+          <!-- touch controls -->
+          <div class="controls">
+            <button id="btnLeft" type="button" aria-label="左へ">◀</button>
+            <button id="btnRight" type="button" aria-label="右へ">▶</button>
+            <button id="btnDown" type="button" aria-label="早おとし">▼</button>
+            <button id="btnDrop" class="drop" type="button" aria-label="一気に落とす">⤓ DROP</button>
+          </div>
+          <div class="keys-hint">キーボード： ← → 移動 ／ ↓ ソフトドロップ ／ スペース ハードドロップ ／ P 一時停止</div>
+        </div>
+
+        <!-- side -->
+        <aside class="side">
+          <div class="card">
+            <h3>NEXT（次のピース）</h3>
+            <div class="next-row" id="nextRow"></div>
+          </div>
+          <div class="card">
+            <h3>PEMDAS ― 計算の順番</h3>
+            <ul class="ladder">
+              <li><span class="rank" style="color:var(--num)">P</span> かっこ <span class="dim">（今回はなし）</span></li>
+              <li><span class="rank" style="color:var(--frac)">E</span> 指数 <span class="dim">（今回はなし）</span></li>
+              <li id="ladderMD"><span class="rank" style="color:var(--bad)">M・D</span> × と ÷ ― 先に・左から</li>
+              <li id="ladderAS"><span class="rank" style="color:#7048c9">A・S</span> ＋ と − ― 後に・左から</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>行の作り方</h3>
+            <div class="hint-pattern">
+              <span class="pt">数</span><span class="pt op">記</span><span class="pt">数</span><span class="pt op">記</span><span class="pt">数</span><span class="pt op">記</span><span class="pt">数</span><span class="pt op">記</span><span class="pt">数</span>
+            </div>
+            <p style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin:8px 0 0;line-height:1.6">
+              列は固定：奇数列＝数字、偶数列＝記号。ピースは2マスずつ動き、着地後は各タイルが自分の列の一番下まで沈むので、穴はできません。あとは9マス埋めてターゲットに合わせるだけです。
+            </p>
+          </div>
+          <div class="card">
+            <h3>メッセージ</h3>
+            <div class="log" id="log">ターゲットと同じ答えの行を作ろう！</div>
+            <div class="btn-row" style="margin-top:10px">
+              <button class="sub-btn" id="pauseBtn" type="button">⏸ 一時停止</button>
+              <button class="sub-btn" id="restartBtn" type="button">↻ はじめから</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+      /* ================= rational numbers ================= */
+      function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { var t = a % b; a = b; b = t; } return a || 1; }
+      function rat(n, d) {
+        if (d === undefined) d = 1;
+        if (d < 0) { n = -n; d = -d; }
+        var g = gcd(n, d);
+        return { n: n / g, d: d / g };
+      }
+      function rAdd(a, b) { return rat(a.n * b.d + b.n * a.d, a.d * b.d); }
+      function rSub(a, b) { return rat(a.n * b.d - b.n * a.d, a.d * b.d); }
+      function rMul(a, b) { return rat(a.n * b.n, a.d * b.d); }
+      function rDiv(a, b) { return rat(a.n * b.d, a.d * b.n); }
+      function rEq(a, b) { return a.n === b.n && a.d === b.d; }
+      function ratHTML(v) {
+        if (v.d === 1) return String(v.n);
+        var sign = v.n < 0 ? "−" : "";
+        return sign + '<span class="frac"><span class="top">' + Math.abs(v.n) + '</span><span class="bot">' + v.d + "</span></span>";
+      }
+      function ratText(v) { return v.d === 1 ? String(v.n) : (v.n + "/" + v.d); }
+
+      /* ================= constants / state ================= */
+      var COLS = 9, ROWS = 14;
+      var OPS = ["+", "−", "×", "÷"];
+      var FRACS = [rat(1,2), rat(1,3), rat(2,3), rat(3,2), rat(1,4), rat(3,4), rat(2,1) /*dummy removed below*/];
+      FRACS = [rat(1,2), rat(1,3), rat(2,3), rat(3,2), rat(1,4), rat(3,4), rat(4,3), rat(5,2)];
+
+      var board, piece, nextPiece, target;
+      var score, lines, combo, level;
+      var state = "start"; // start | falling | calculating | paused | over
+      var dropAcc = 0, lastTime = 0, softDrop = false;
+      var evalRowIdx = -1;
+      var settleTiles = null; // [{tile,c,r}] during per-column sink animation
+
+      var $ = function (id) { return document.getElementById(id); };
+      var boardEl = $("board"), tokensEl = $("tokens");
+      var cellEls = [];
+
+      (function buildCells() {
+        for (var r = 0; r < ROWS; r++) {
+          cellEls.push([]);
+          for (var c = 0; c < COLS; c++) {
+            var d = document.createElement("div");
+            d.className = "cell";
+            boardEl.appendChild(d);
+            cellEls[r].push(d);
+          }
+        }
+      })();
+
+      var railEls = [];
+      (function buildRail() {
+        var rail = $("rail");
+        for (var r = 0; r < ROWS; r++) {
+          var d = document.createElement("div");
+          d.className = "rail-cell r-empty";
+          rail.appendChild(d);
+          railEls.push(d);
+        }
+      })();
+
+      function sleep(ms) { return new Promise(function (res) { setTimeout(res, ms); }); }
+
+      /* ===== focus mode helpers: game fully stops, calc overlay takes over ===== */
+      var stepResolver = null, continueResolver = null;
+      function enterFocusMode() {
+        $("calcStage").classList.add("focus-mode");
+        $("continueBtn").hidden = true;
+        $("stepNextBtn").hidden = false;
+        $("stepHint").style.display = "";
+        document.body.style.overflow = "hidden";
+        var st = $("calcStage");
+        if (st.scrollTo) st.scrollTo(0, 0);
+      }
+      function exitFocusMode() {
+        $("calcStage").classList.remove("focus-mode");
+        $("continueBtn").hidden = true;
+        $("stepNextBtn").hidden = true;
+        document.body.style.overflow = "";
+        stepResolver = null; continueResolver = null;
+      }
+      // A step waits ~1.2s on its own, or advances at once on tap.
+      function waitStep(ms) {
+        return new Promise(function (resolve) {
+          var done = false;
+          var timer = setTimeout(finish, ms);
+          function finish() {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            if (stepResolver === finish) stepResolver = null;
+            resolve();
+          }
+          stepResolver = finish;
+        });
+      }
+      function advanceStep() { if (stepResolver) stepResolver(); }
+      // Final result screen: stays until つづける is pressed.
+      function waitContinue() {
+        return new Promise(function (resolve) {
+          $("stepNextBtn").hidden = true;
+          $("stepHint").style.display = "none";
+          var btn = $("continueBtn");
+          btn.hidden = false;
+          continueResolver = function () { continueResolver = null; resolve(); };
+          btn.focus();
+        });
+      }
+
+      /* ================= tiles & pieces ================= */
+      function randNumTile() {
+        if (Math.random() < 0.32) {
+          var f = FRACS[Math.floor(Math.random() * FRACS.length)];
+          return { kind: "num", val: rat(f.n, f.d), isFrac: true };
+        }
+        return { kind: "num", val: rat(1 + Math.floor(Math.random() * 6)), isFrac: false };
+      }
+      function randOpTile() {
+        var weights = ["+", "+", "−", "−", "×", "×", "×", "÷", "÷"];
+        return { kind: "op", op: weights[Math.floor(Math.random() * weights.length)] };
+      }
+      function makePiece() { return [randNumTile(), randOpTile(), randNumTile()]; }
+
+      function tileClass(t, extra) {
+        var cls = extra || "";
+        if (!t) return "cell" + cls;
+        if (t.stone) return "cell stone" + cls;
+        if (t.kind === "op") return "cell op" + cls;
+        return "cell " + (t.isFrac ? "frac-t" : "num") + cls;
+      }
+      function tileHTML(t) {
+        if (!t) return "";
+        if (t.kind === "op") return t.op;
+        return ratHTML(t.val);
+      }
+
+      /* ================= rendering ================= */
+      function render() {
+        var rowRem = [], rowStone = [];
+        for (var r0 = 0; r0 < ROWS; r0++) {
+          var f0 = 0, s0 = 0;
+          for (var c0 = 0; c0 < COLS; c0++) {
+            if (board[r0][c0]) { f0++; if (board[r0][c0].stone) s0++; }
+          }
+          rowRem.push(COLS - f0); rowStone.push(s0);
+        }
+        for (var r = 0; r < ROWS; r++) {
+          for (var c = 0; c < COLS; c++) {
+            var t = board[r][c];
+            var extra = "";
+            if (r === evalRowIdx && t) extra += " eval";
+            if (rowRem[r] === 1) extra += " near";
+            if (!t && c % 2 === 1) extra += " col-op";
+            if (!t && c % 2 === 0) extra += " col-num";
+            cellEls[r][c].className = tileClass(t, extra);
+            cellEls[r][c].innerHTML = tileHTML(t);
+          }
+          var rel = railEls[r];
+          if (COLS - rowRem[r] === 0) { rel.className = "rail-cell r-empty"; rel.textContent = ""; }
+          else if (rowStone[r] === COLS) { rel.className = "rail-cell r-stone"; rel.textContent = "石"; }
+          else if (rowRem[r] === 0) { rel.className = "rail-cell r-full"; rel.textContent = "✓"; }
+          else if (rowRem[r] === 1) { rel.className = "rail-cell r-one"; rel.textContent = "あと1"; }
+          else { rel.className = "rail-cell"; rel.textContent = "あと" + rowRem[r]; }
+        }
+        if (piece && (state === "falling" || state === "paused")) {
+          for (var i = 0; i < 3; i++) {
+            var cc = piece.x + i, rr = piece.y;
+            if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) {
+              cellEls[rr][cc].className = tileClass(piece.tiles[i], " falling");
+              cellEls[rr][cc].innerHTML = tileHTML(piece.tiles[i]);
+            }
+          }
+        }
+        if (settleTiles) {
+          for (var si = 0; si < settleTiles.length; si++) {
+            var st = settleTiles[si];
+            if (st.r >= 0 && st.r < ROWS && st.c >= 0 && st.c < COLS) {
+              cellEls[st.r][st.c].className = tileClass(st.tile, " falling");
+              cellEls[st.r][st.c].innerHTML = tileHTML(st.tile);
+            }
+          }
+        }
+        // NEXT
+        var nr = $("nextRow"); nr.innerHTML = "";
+        if (nextPiece) {
+          nextPiece.forEach(function (t) {
+            var d = document.createElement("div");
+            d.className = "next-tile" + (t.kind === "op" ? " op" : (t.isFrac ? " frac-t" : ""));
+            d.innerHTML = tileHTML(t);
+            nr.appendChild(d);
+          });
+        }
+        $("scoreVal").textContent = score;
+        $("linesVal").textContent = lines;
+        $("levelVal").textContent = level;
+        $("comboVal").textContent = "コンボ ×" + Math.max(1, combo);
+        $("targetVal").textContent = target === null || target === undefined ? "?" : ratText(target);
+      }
+
+      function setLog(html) { $("log").innerHTML = html; }
+      function showResultBanner(text, cls) {
+        var b = $("resultBanner");
+        b.textContent = text;
+        b.className = "result-banner " + cls;
+        b.hidden = false;
+      }
+      function hideResultBanner() { $("resultBanner").hidden = true; }
+      function setCalcMsg(text, cls) {
+        var m = $("calcMsg");
+        m.textContent = text;
+        m.className = "calc-msg" + (cls ? " " + cls : "");
+      }
+      function setPhase(text, cls) {
+        var b = $("phaseBadge");
+        b.textContent = text;
+        b.className = "phase-badge" + (cls ? " " + cls : "");
+        $("ladderMD").classList.toggle("active", cls === "md");
+        $("ladderAS").classList.toggle("active", cls === "as");
+      }
+
+      function renderCalcTokens(tokens, hl) {
+        tokensEl.innerHTML = "";
+        tokens.forEach(function (t, i) {
+          var d = document.createElement("div");
+          var cls = "token";
+          if (t.kind === "op") cls += " op";
+          else if (t.val.d !== 1) cls += " frac-tok";
+          if (hl && hl.indexOf(i) >= 0) cls += " hl";
+          if (t.pop) cls += " result-pop";
+          if (t.flipping) cls += " flip-anim";
+          d.className = cls;
+          d.id = "tok-" + i;
+          d.innerHTML = t.kind === "op" ? t.op : ratHTML(t.val);
+          tokensEl.appendChild(d);
+        });
+      }
+
+      /* ================= target generation ================= */
+      function evalSimple(tokens) {
+        // tokens: alternating num/op; PEMDAS evaluation, returns rational
+        var toks = tokens.slice();
+        var i;
+        // MD
+        i = 1;
+        while (i < toks.length) {
+          var op = toks[i].op;
+          if (op === "×" || op === "÷") {
+            var res = op === "×" ? rMul(toks[i - 1].val, toks[i + 1].val) : rDiv(toks[i - 1].val, toks[i + 1].val);
+            toks.splice(i - 1, 3, { kind: "num", val: res });
+            i = 1;
+          } else i += 2;
+        }
+        // AS
+        i = 1;
+        while (i < toks.length) {
+          var op2 = toks[i].op;
+          var res2 = op2 === "+" ? rAdd(toks[i - 1].val, toks[i + 1].val) : rSub(toks[i - 1].val, toks[i + 1].val);
+          toks.splice(i - 1, 3, { kind: "num", val: res2 });
+          i = 1;
+        }
+        return toks[0].val;
+      }
+      function makeTarget() {
+        // 5 numbers / 4 ops, but biased to small reachable integers:
+        // small numbers (1-4, occasional 5-6) and + - weighted over × ÷
+        var opPool = ["+", "+", "+", "−", "−", "−", "×", "×", "÷"];
+        for (var attempt = 0; attempt < 120; attempt++) {
+          var toks = [];
+          for (var k = 0; k < 5; k++) {
+            var nv = Math.random() < 0.78 ? 1 + Math.floor(Math.random() * 4) : 1 + Math.floor(Math.random() * 6);
+            toks.push({ kind: "num", val: rat(nv) });
+            if (k < 4) toks.push({ kind: "op", op: opPool[Math.floor(Math.random() * opPool.length)] });
+          }
+          var v = evalSimple(toks);
+          if (v.d === 1 && v.n >= 0 && v.n <= 24) return v;
+        }
+        return rat(3 + Math.floor(Math.random() * 10));
+      }
+
+      /* ================= game flow ================= */
+      function newBoard() {
+        board = [];
+        for (var r = 0; r < ROWS; r++) { var row = []; for (var c = 0; c < COLS; c++) row.push(null); board.push(row); }
+      }
+      function resetGame() {
+        exitFocusMode();
+        hideKcfZone();
+        newBoard();
+        score = 0; lines = 0; combo = 0; level = 1;
+        target = makeTarget();
+        nextPiece = makePiece();
+        piece = null; evalRowIdx = -1;
+        setPhase("待機中", "");
+        setCalcMsg("行を9マスそろえると、ここで計算が再生されます", "");
+        hideResultBanner();
+        tokensEl.innerHTML = "";
+        setLog("ターゲットと同じ答えの行を作ろう！");
+        render();
+      }
+      function startGame() {
+        resetGame();
+        $("startOverlay").classList.remove("show");
+        $("overOverlay").classList.remove("show");
+        state = "falling";
+        spawnPiece();
+      }
+      function columnHeight(c) {
+        var h = 0;
+        for (var r = 0; r < ROWS; r++) if (board[r][c]) h++;
+        return h; // columns never have gaps (settle placement)
+      }
+      function spawnPiece() {
+        piece = { tiles: nextPiece, x: 4, y: 0 }; // left edge only on odd columns (0,2,4,6 zero-based)
+        nextPiece = makePiece();
+        // spawn collision: any settled tile in top row within span
+        for (var i = 0; i < 3; i++) {
+          if (board[0][piece.x + i]) { gameOver(); return; }
+        }
+        render();
+      }
+      function gameOver() {
+        state = "over";
+        piece = null;
+        render();
+        $("finalScore").textContent = score;
+        $("finalLines").textContent = lines + " 行クリア ／ レベル " + level;
+        $("overOverlay").classList.add("show");
+      }
+
+      function canMove(dx, dy) {
+        for (var i = 0; i < 3; i++) {
+          var nx = piece.x + i + dx, ny = piece.y + dy;
+          if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+          if (ny >= 0 && board[ny][nx]) return false;
+        }
+        return true;
+      }
+      function move(dx) {
+        if (state !== "falling" || !piece) return;
+        var step = dx * 2; // snap: left edge stays on odd columns (1,3,5,7 in 1-based)
+        if (canMove(step, 0)) { piece.x += step; render(); }
+      }
+      function stepDown() {
+        if (!piece) return;
+        if (canMove(0, 1)) { piece.y++; render(); }
+        else lockPiece();
+      }
+      function hardDrop() {
+        if (state !== "falling" || !piece) return;
+        while (canMove(0, 1)) piece.y++;
+        lockPiece();
+      }
+
+      function lockPiece() {
+        if (!piece) return;
+        var p = piece;
+        piece = null;
+        state = "calculating";
+        // Per-column sink: each tile falls on its own to the lowest free
+        // cell of its column, so columns stack with no gaps / cavities.
+        var dest = [];
+        for (var i = 0; i < 3; i++) {
+          var c = p.x + i;
+          var r = ROWS - 1;
+          while (r >= 0 && board[r][c]) r--;
+          dest.push(r);
+        }
+        settleTiles = p.tiles.map(function (t, idx) { return { tile: t, c: p.x + idx, r: p.y }; });
+        render();
+        (async function () {
+          // short sink animation: tiles descend independently
+          var moving = true;
+          while (moving) {
+            moving = false;
+            for (var j = 0; j < settleTiles.length; j++) {
+              var targetR = dest[j] < 0 ? 0 : dest[j];
+              if (settleTiles[j].r < targetR) { settleTiles[j].r++; moving = true; }
+            }
+            render();
+            if (moving) await sleep(32);
+          }
+          for (var k = 0; k < 3; k++) {
+            var rr = dest[k] < 0 ? 0 : dest[k];
+            board[rr][p.x + k] = p.tiles[k];
+          }
+          settleTiles = null;
+          render();
+          await processRows();
+          if (state === "over") return;
+          for (var c2 = 0; c2 < COLS; c2++) {
+            if (board[0][c2]) { gameOver(); return; }
+          }
+          state = "falling";
+          spawnPiece();
+        })();
+      }
+
+      function findFullRow() {
+        // lowest row that is full and not fully stoned
+        for (var r = ROWS - 1; r >= 0; r--) {
+          var full = true, allStone = true;
+          for (var c = 0; c < COLS; c++) {
+            if (!board[r][c]) { full = false; break; }
+            if (!board[r][c].stone) allStone = false;
+          }
+          if (full && !allStone) return r;
+        }
+        return -1;
+      }
+
+      async function processRows() {
+        var guard = 0;
+        while (guard++ < 20) {
+          var r = findFullRow();
+          if (r < 0) break;
+          await evaluateRow(r);
+        }
+        evalRowIdx = -1;
+        render();
+      }
+
+      function stoneRow(r) {
+        for (var c = 0; c < COLS; c++) if (board[r][c]) board[r][c].stone = true;
+      }
+      function clearRowBoard(r) {
+        for (var c = 0; c < COLS; c++) {
+          for (var rr = r; rr > 0; rr--) board[rr][c] = board[rr - 1][c];
+          board[0][c] = null;
+        }
+      }
+
+      /* ================= KCF =================
+         Focus mode: NO auto-flip. Calculation waits here until FLIP is
+         pressed. The 3 target tiles are shown extra-large with
+         Keep / Change / Flip labels, plus a before → after expression. */
+      function waitFlip(leftVal, rightVal) {
+        return new Promise(function (resolve) {
+          var zone = $("kcfZone"), btn = $("flipBtn");
+          var leftTile = $("kcfLeftTile"), opTile = $("kcfOpTile"), rightTile = $("kcfRightTile");
+          var ba = $("kcfBeforeAfter");
+          var rec = rat(rightVal.d, rightVal.n);
+          var beforeText = ratText(leftVal) + " ÷ " + ratText(rightVal);
+          var afterText = ratText(leftVal) + " × " + ratText(rec);
+          leftTile.className = "kcf-big-tile" + (leftVal.d !== 1 ? " frac-tile" : "");
+          leftTile.innerHTML = ratHTML(leftVal);
+          opTile.textContent = "÷";
+          rightTile.innerHTML = ratHTML(rightVal);
+          ba.innerHTML = '<span class="ba-before">' + beforeText + "</span>";
+          zone.classList.add("show");
+          $("stepNextBtn").hidden = true; // FLIP is the only way forward here
+          var done = false;
+          function onClick() {
+            if (done) return;
+            done = true;
+            btn.removeEventListener("click", onClick);
+            // Vertical flip animation on the fraction tile (and the op tile):
+            // halfway through, ÷ becomes × and the fraction becomes its reciprocal.
+            rightTile.classList.add("flipping");
+            opTile.classList.add("flipping");
+            setTimeout(function () {
+              opTile.textContent = "×";
+              rightTile.innerHTML = ratHTML(rec);
+              ba.innerHTML = '<span class="ba-before">' + beforeText + '</span><span class="ba-arrow">→</span><span class="ba-after">' + afterText + "</span>";
+            }, 330);
+            setTimeout(function () {
+              rightTile.classList.remove("flipping");
+              opTile.classList.remove("flipping");
+              resolve(true);
+            }, 720);
+          }
+          btn.addEventListener("click", onClick);
+          btn.focus();
+        });
+      }
+      function hideKcfZone() {
+        $("kcfZone").classList.remove("show");
+        $("stepNextBtn").hidden = false;
+      }
+
+      /* ================= PEMDAS evaluation with animation ================= */
+      async function evaluateRow(r) {
+        evalRowIdx = r;
+        hideResultBanner();
+        render();
+        enterFocusMode(); // game side fully stops; only the calculation is on screen
+        var rowTiles = board[r].slice();
+
+        // validate pattern: num op num op num op num
+        var valid = true;
+        for (var i = 0; i < COLS; i++) {
+          var expectNum = i % 2 === 0;
+          if (expectNum && rowTiles[i].kind !== "num") valid = false;
+          if (!expectNum && rowTiles[i].kind !== "op") valid = false;
+        }
+        var exprText = rowTiles.map(function (t) { return t.kind === "op" ? t.op : ratText(t.val); }).join(" ");
+
+        if (!valid) {
+          setPhase("式チェック", "");
+          setCalcMsg("「" + exprText + "」は式の形になっていません", "bad");
+          renderCalcTokens(rowTiles.map(function (t) {
+            return t.kind === "op" ? { kind: "op", op: t.op } : { kind: "num", val: t.val };
+          }), []);
+          showResultBanner("式の形になっていない → 石化", "bad");
+          setLog('<span class="bad">式になっていない行が石になりました。</span><br />数字と記号を交互に並べよう（数・記・数・記・数・記・数・記・数）。');
+          combo = 0;
+          await waitContinue();
+          exitFocusMode();
+          stoneRow(r);
+          evalRowIdx = -1;
+          render();
+          return;
+        }
+
+        var tokens = rowTiles.map(function (t) {
+          return t.kind === "op" ? { kind: "op", op: t.op } : { kind: "num", val: rat(t.val.n, t.val.d) };
+        });
+
+        setCalcMsg("式が完成！ PEMDASの順番で計算します", "");
+        renderCalcTokens(tokens, []);
+        await waitStep(1200);
+
+        var stepNo = 0;
+
+        // ---- phase 1: × ÷ left to right ----
+        while (true) {
+          var idx = -1;
+          for (var j = 1; j < tokens.length; j += 2) {
+            if (tokens[j].op === "×" || tokens[j].op === "÷") { idx = j; break; }
+          }
+          if (idx < 0) break;
+          stepNo++;
+          var op = tokens[idx].op, L = tokens[idx - 1], R = tokens[idx + 1];
+          setPhase("ステップ" + stepNo + "：×÷を先に（左から）", "md");
+          renderCalcTokens(tokens, [idx - 1, idx, idx + 1]);
+
+          if (op === "÷" && R.val.d !== 1) {
+            // ---- KCF moment: waits for FLIP, no auto-flip in focus mode ----
+            setCalcMsg("÷ のうしろが分数！ 下の特大タイルがフリップの対象です ― FLIPボタンを押そう！", "");
+            await waitFlip(L.val, R.val); // resolves only after FLIP is pressed and the flip animation played
+            score += 50;
+            setLog('<span class="good">KCFボーナス +50点！</span> Keep・Change・Flip できました。');
+            render();
+            // reflect the same change in the main expression row
+            var origRightText = ratText(R.val);
+            tokens[idx].op = "×";
+            tokens[idx + 1].val = rat(R.val.d, R.val.n);
+            renderCalcTokens(tokens, [idx - 1, idx, idx + 1]);
+            setCalcMsg("Keep「" + ratText(L.val) + " そのまま」 Change「÷→×」 Flip「" + origRightText + "→" + ratText(tokens[idx + 1].val) + "」", "");
+            await waitStep(1200); // let the before → after stay readable
+            hideKcfZone();
+            op = "×"; R = tokens[idx + 1];
+          } else {
+            await waitStep(1200);
+          }
+
+          var res = op === "×" ? rMul(L.val, R.val) : rDiv(L.val, R.val);
+          setCalcMsg(ratText(L.val) + " " + op + " " + ratText(R.val) + " = " + ratText(res), "");
+          tokens.splice(idx - 1, 3, { kind: "num", val: res, pop: true });
+          renderCalcTokens(tokens, []);
+          await waitStep(1200);
+          tokens.forEach(function (t) { delete t.pop; });
+        }
+
+        // ---- phase 2: + − left to right ----
+        while (tokens.length > 1) {
+          var idx2 = 1;
+          var op2 = tokens[idx2].op, L2 = tokens[idx2 - 1], R2 = tokens[idx2 + 1];
+          stepNo++;
+          setPhase("ステップ" + stepNo + "：＋−を左から", "as");
+          renderCalcTokens(tokens, [idx2 - 1, idx2, idx2 + 1]);
+          await waitStep(1200);
+          var res2 = op2 === "+" ? rAdd(L2.val, R2.val) : rSub(L2.val, R2.val);
+          setCalcMsg(ratText(L2.val) + " " + op2 + " " + ratText(R2.val) + " = " + ratText(res2), "");
+          tokens.splice(idx2 - 1, 3, { kind: "num", val: res2, pop: true });
+          renderCalcTokens(tokens, []);
+          await waitStep(1200);
+          tokens.forEach(function (t) { delete t.pop; });
+        }
+
+        var result = tokens[0].val;
+        setPhase("計算おわり", "");
+        evalRowIdx = -1;
+
+        if (rEq(result, target)) {
+          combo++;
+          var gain = 100 + (combo - 1) * 50;
+          score += gain;
+          lines++;
+          level = Math.floor(lines / 5) + 1;
+          setCalcMsg("答えは " + ratText(result) + " ― ターゲットと一致！ +" + gain + "点", "good");
+          showResultBanner("計算結果 " + ratText(result) + " ＝ ターゲット " + ratText(target) + " → 消える！", "good");
+          setLog('<span class="good">「' + exprText + " = " + ratText(result) + '」</span><br />ターゲット達成！「つづける」で盤面に戻ると行が消えます（コンボ ×' + Math.max(1, combo) + "）。");
+          renderCalcTokens(tokens, []);
+          render();
+          await waitContinue(); // result screen holds until つづける
+          exitFocusMode();
+          // back on the board: now the clear is reflected
+          evalRowIdx = r;
+          render();
+          for (var c = 0; c < COLS; c++) cellEls[r][c].classList.add("clearing");
+          await sleep(450);
+          evalRowIdx = -1;
+          clearRowBoard(r);
+          target = makeTarget();
+          render();
+        } else {
+          combo = 0;
+          setCalcMsg("答えは " + ratText(result) + " ― ターゲットは " + ratText(target) + " でした", "bad");
+          showResultBanner("計算結果 " + ratText(result) + " ≠ ターゲット " + ratText(target) + " → 石化", "bad");
+          setLog('<span class="bad">「' + exprText + " = " + ratText(result) + '」</span><br />ターゲットは ' + ratText(target) + "。「つづける」で盤面に戻ると行が石になります。");
+          renderCalcTokens(tokens, []);
+          render();
+          await waitContinue(); // result screen holds until つづける
+          exitFocusMode();
+          stoneRow(r);
+          evalRowIdx = -1;
+          render();
+        }
+      }
+
+      /* ================= main loop ================= */
+      function dropInterval() {
+        var base = Math.max(300, 900 - (level - 1) * 90);
+        return softDrop ? Math.min(60, base) : base;
+      }
+      function loop(ts) {
+        requestAnimationFrame(loop);
+        if (!lastTime) lastTime = ts;
+        var dt = ts - lastTime;
+        lastTime = ts;
+        if (state === "falling" && piece) {
+          dropAcc += dt;
+          var iv = dropInterval();
+          if (dropAcc >= iv) {
+            dropAcc = 0;
+            stepDown();
+          }
+        } else {
+          dropAcc = 0;
+        }
+      }
+      requestAnimationFrame(loop);
+
+      /* ================= input ================= */
+      document.addEventListener("keydown", function (e) {
+        if (state === "start") {
+          if (e.key === " " || e.key === "Enter") { e.preventDefault(); startGame(); }
+          return;
+        }
+        if (state === "over") return;
+        if (e.key === "p" || e.key === "P") { togglePause(); return; }
+        if (state !== "falling") return;
+        switch (e.key) {
+          case "ArrowLeft": e.preventDefault(); move(-1); break;
+          case "ArrowRight": e.preventDefault(); move(1); break;
+          case "ArrowDown": e.preventDefault(); softDrop = true; stepDown(); break;
+          case " ": e.preventDefault(); hardDrop(); break;
+          case "a": case "A": move(-1); break;
+          case "d": case "D": move(1); break;
+          case "s": case "S": stepDown(); break;
+        }
+      });
+      document.addEventListener("keyup", function (e) {
+        if (e.key === "ArrowDown") softDrop = false;
+      });
+
+      function holdButton(el, action, repeat) {
+        var iv = null;
+        function start(e) {
+          e.preventDefault();
+          action();
+          if (repeat) iv = setInterval(action, 110);
+        }
+        function stop() { if (iv) { clearInterval(iv); iv = null; } }
+        el.addEventListener("pointerdown", start);
+        el.addEventListener("pointerup", stop);
+        el.addEventListener("pointerleave", stop);
+        el.addEventListener("pointercancel", stop);
+      }
+      holdButton($("btnLeft"), function () { move(-1); }, true);
+      holdButton($("btnRight"), function () { move(1); }, true);
+      holdButton($("btnDown"), function () { if (state === "falling") stepDown(); }, true);
+      $("btnDrop").addEventListener("click", function () { hardDrop(); });
+
+      function togglePause() {
+        if (state === "falling") {
+          state = "paused";
+          $("pauseBtn").textContent = "▶ 再開";
+          setLog("一時停止中です。");
+          render();
+        } else if (state === "paused") {
+          state = "falling";
+          $("pauseBtn").textContent = "⏸ 一時停止";
+          setLog("再開しました。");
+          render();
+        }
+      }
+      $("pauseBtn").addEventListener("click", togglePause);
+      $("restartBtn").addEventListener("click", function () {
+        if (state === "calculating") return;
+        $("startOverlay").classList.remove("show");
+        $("overOverlay").classList.remove("show");
+        startGame();
+      });
+      $("startBtn").addEventListener("click", startGame);
+      $("retryBtn").addEventListener("click", startGame);
+      $("flipBtn").addEventListener("click", function () { /* handled inside waitFlip */ });
+      $("stepNextBtn").addEventListener("click", function () { advanceStep(); });
+      tokensEl.addEventListener("click", function () { advanceStep(); });
+      $("continueBtn").addEventListener("click", function () { if (continueResolver) continueResolver(); });
+
+      /* ================= init ================= */
+      resetGame();
+      state = "start";
+      render();
+    </script>
+  </body>
+</html>
